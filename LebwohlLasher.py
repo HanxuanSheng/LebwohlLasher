@@ -144,6 +144,7 @@ def one_energy(arr,ix,iy,nmax):#耗时最长
 	  en (float) = reduced energy of cell.
     """
     en = 0.0
+   
     ixp = (ix+1)%nmax # These are the coordinates
     ixm = (ix-1)%nmax # of the neighbours
     iyp = (iy+1)%nmax # with wraparound
@@ -152,14 +153,18 @@ def one_energy(arr,ix,iy,nmax):#耗时最长
 # Add together the 4 neighbour contributions
 # to the energy
 #
-    ang = arr[ix,iy]-arr[ixp,iy]
-    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)#把公式简化有用吗
-    ang = arr[ix,iy]-arr[ixm,iy]
+    central_value = arr[ix, iy]
+    #只有四个数，numpy无用
+    
+    ang = central_value-arr[ixp,iy]
+    en += 0.5*(1.0 - 3.0*np.cos(ang)**2)#把公式简化有用吗？仅有四个值，向量化的作用不大，反而会计算空间，np.sum也是大材小用
+    ang = central_value-arr[ixm,iy]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    ang = arr[ix,iy]-arr[ix,iyp]
+    ang = central_value-arr[ix,iyp]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
-    ang = arr[ix,iy]-arr[ix,iym]
+    ang = central_value-arr[ix,iym]
     en += 0.5*(1.0 - 3.0*np.cos(ang)**2)
+    
     return en
 #=======================================================================
 def all_energy(arr,nmax):#可以向量化吗啊？
@@ -173,11 +178,26 @@ def all_energy(arr,nmax):#可以向量化吗啊？
 	Returns:
 	  enall (float) = reduced energy of lattice.
     """
-    enall = 0.0
-    for i in range(nmax):
-        for j in range(nmax):
-            enall += one_energy(arr,i,j,nmax)#非要重复计算单个能量吗，之前算过的不可以创建一个矩阵吗？不可以保留吗？
-    return enall
+    en = 0.0
+    # 使用 periodic boundary conditions
+    shifted_xp = np.roll(arr, -1, axis=0)
+    shifted_xm = np.roll(arr, 1, axis=0)
+    shifted_yp = np.roll(arr, -1, axis=1)
+    shifted_ym = np.roll(arr, 1, axis=1)
+    
+    # 计算角度差
+    ang_xp = arr - shifted_xp
+    ang_xm = arr - shifted_xm
+    ang_yp = arr - shifted_yp
+    ang_ym = arr - shifted_ym
+    
+    # 计算能量贡献
+    en = 0.5 * (1.0 - 3.0 * np.cos(ang_xp) ** 2)
+    en += 0.5 * (1.0 - 3.0 * np.cos(ang_xm) ** 2)
+    en += 0.5 * (1.0 - 3.0 * np.cos(ang_yp) ** 2)
+    en += 0.5 * (1.0 - 3.0 * np.cos(ang_ym) ** 2)
+    
+    return np.sum(en)
 #=======================================================================
 def get_order(arr,nmax):
     """
@@ -191,23 +211,18 @@ def get_order(arr,nmax):
 	Returns:
 	  max(eigenvalues(Qab)) (float) = order parameter for lattice.
     """
-    Qab = np.zeros((3,3))
-    delta = np.eye(3,3)
-    #
-    # Generate a 3D unit vector for each cell (i,j) and
-    # put it in a (3,i,j) array.
-    #
-    lab = np.vstack((np.cos(arr),np.sin(arr),np.zeros_like(arr))).reshape(3,nmax,nmax)
-    for a in range(3):
-        for b in range(3):
-            for i in range(nmax):
-                for j in range(nmax):
-                    Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
-    Qab = Qab/(2*nmax*nmax)
-    eigenvalues,eigenvectors = np.linalg.eig(Qab)
+    delta = np.eye(3)
+    lab = np.stack((np.cos(arr), np.sin(arr), np.zeros_like(arr)))  # 3 x nmax x nmax
+    
+    # 计算 Qab 的矩阵
+    Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  # 对 i,j 方向进行求和
+    Qab = (3 * Qab - delta * (nmax * nmax)) / (2 * nmax * nmax)
+    
+    eigenvalues, _ = np.linalg.eig(Qab)
     return eigenvalues.max()
 #=======================================================================
 def MC_step(arr,Ts,nmax):
+    # ChatGPT没有看，但是需要看邮件，新旧版本？要不要，还是直接顺序更新，删除random，两个重要的Chat GPT 对话框，都要再问一遍
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -234,20 +249,22 @@ def MC_step(arr,Ts,nmax):
     #低温时 scale 较小，角度变化幅度小 → 系统趋于稳定。
     #高温时 scale 较大，角度变化幅度大 → 系统波动较大。
     accept = 0
-    xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
+    #xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
+    #yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
     #！！！如果设成一次全体更新之后，再 全体更新的顺序进行，是否可行？
     #这样，每次 Monte Carlo 步骤都会在随机的位置进行更新，而不是按顺序扫描整个晶格，模拟更符合实际的热力学过程。
     aran = np.random.normal(scale=scale, size=(nmax,nmax))
+    #因为中值为0，所以不会产生波浪状或棋盘，比如说第一行平均比第二行少一个正态分布的中值。
     #在实际中，温度对于角度的影响，是如此随意的吗？正态分布，还是一个极为复杂的等式
-    for i in range(nmax):
-        for j in range(nmax):#看是否里层要迭代行 更节省时间
-            ix = xran[i,j]
-            iy = yran[i,j]
-            ang = aran[i,j]
+    for ix in range(nmax):
+        for iy in range(nmax):#看是否里层要迭代行 更节省时间
+            #ix = xran[i,j]
+            #iy = yran[i,j]
+            ang = aran[ix,iy]
             en0 = one_energy(arr,ix,iy,nmax)
             arr[ix,iy] += ang
             en1 = one_energy(arr,ix,iy,nmax)
+
             if en1<=en0:#在实际物理系统中，如果某个格点的扰动导致其能量下降，它确实会释放能量，并趋于更稳定的状态。
                 accept += 1
             else:
@@ -258,7 +275,9 @@ def MC_step(arr,Ts,nmax):
                 if boltz >= np.random.uniform(0.0,1.0):
                     accept += 1
                 else:
-                    arr[ix,iy] -= ang
+                    arr[ix,iy] -= ang 
+
+          
     return accept/(nmax*nmax)
 #=======================================================================
 def main(program, nsteps, nmax, temp, pflag):
@@ -279,9 +298,9 @@ def main(program, nsteps, nmax, temp, pflag):
     # Plot initial frame of lattice
     plotdat(lattice,pflag,nmax)
     # Create arrays to store energy, acceptance ratio and order parameter
-    energy = np.zeros(nsteps+1,dtype=np.dtype)
-    ratio = np.zeros(nsteps+1,dtype=np.dtype)
-    order = np.zeros(nsteps+1,dtype=np.dtype)
+    energy = np.zeros(nsteps+1,dtype=float)
+    ratio = np.zeros(nsteps+1,dtype=float)
+    order = np.zeros(nsteps+1,dtype=float)
     # Set initial values in arrays
     energy[0] = all_energy(lattice,nmax)
     ratio[0] = 0.5 # ideal value
