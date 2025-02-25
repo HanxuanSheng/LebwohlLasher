@@ -39,7 +39,7 @@ cdef extern from "stdlib.h":
     double sqrt(double)
     double log(double)
 
-from cython.parallel cimport prange
+from cython.parallel import prange
 cimport openmp
 
 #=======================================================================
@@ -226,27 +226,27 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
     
 #     return np.sum(en)
 
-# cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax,int num_threads):
-#     cdef int ix, iy
-#     cdef double total_energy = 0.0
-    
-#     for ix in range(nmax):
-#         for iy in range(nmax):
-#             total_energy += one_energy(arr, ix, iy, nmax,num_threads)
-    
-#     return total_energy 
-cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax, int num_threads):
+cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax,int num_threads):
     cdef int ix, iy
     cdef double total_energy = 0.0
+    
+    for ix in range(nmax):
+        for iy in range(nmax):
+            total_energy += one_energy(arr, ix, iy, nmax,num_threads)
+    
+    return total_energy 
+# cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax, int num_threads):
+#     cdef int ix, iy
+#     cdef double total_energy = 0.0
 
-    # 使用 OpenMP 并行化外部循环
-    with parallel(num_threads=num_threads):
-        for ix in prange(nmax, nogil=True):  # prange 自动处理线程分配
-            for iy in range(nmax):
-                # 如果 one_energy 函数没有并行化，仍然可以并行调用
-                total_energy += one_energy(arr, ix, iy, nmax, num_threads)
+#     # 使用 OpenMP 并行化外部循环
+#     with gil:#(num_threads=num_threads):
+#         for ix in prange(nmax):  # prange 自动处理线程分配
+#             for iy in range(nmax):
+#                 # 如果 one_energy 函数没有并行化，仍然可以并行调用
+#                 total_energy += one_energy(arr, ix, iy, nmax, num_threads)
 
-    return total_energy
+#     return total_energy
 #=======================================================================
 # def get_order(arr,nmax):
 #     """
@@ -261,12 +261,12 @@ cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax, int num_t
 # 	  max(eigenvalues(Qab)) (float) = order parameter for lattice.
 #     """
 
-cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax):
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] Qab = np.zeros((3, 3), dtype=np.float64)
+cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax,int num_threads):
+    cdef cnp.ndarray[cnp.complex128_t, ndim=2] Qab = np.zeros((3, 3), dtype=np.complex128)
     cdef cnp.ndarray[cnp.float64_t, ndim=2] delta = np.eye(3, dtype=np.float64)
     cdef cnp.ndarray[cnp.float64_t, ndim=3] lab
-    cdef cnp.ndarray[cnp.float64_t, ndim=1] eigenvalues
-    cdef cnp.ndarray[cnp.float64_t, ndim=2] eigenvectors
+    cdef cnp.ndarray[cnp.complex128_t, ndim=1] eigenvalues
+    cdef cnp.ndarray[cnp.complex128_t, ndim=2] eigenvectors
     cdef int a, b, i, j
     
     lab = np.vstack((np.cos(arr), np.sin(arr), np.zeros_like(arr))).reshape(3, nmax, nmax)
@@ -275,16 +275,16 @@ cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax):
     #         for i in range(nmax):
     #             for j in range(nmax):
     #                 Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
-    with parallel():
-        for a in prange(3, nogil=True):  # 并行化外层两个循环
+    with nogil:  # 释放 GIL
+        for a in range(3):
             for b in range(3):
-                for i in range(nmax):
+                for i in prange(nmax, num_threads=num_threads):  # prange 自动处理线程分配
                     for j in range(nmax):
                         # 更新 Qab
                         Qab[a, b] += 3 * lab[a, i, j] * lab[b, i, j] - delta[a, b]
     Qab = Qab/(2*nmax*nmax)
     eigenvalues,eigenvectors = np.linalg.eig(Qab)
-    return eigenvalues.max()
+    return eigenvalues.real.max()
 #=======================================================================
 #def MC_step(arr,Ts,nmax):
 cdef double box_muller():
@@ -361,14 +361,14 @@ def main(program, nsteps, nmax, temp, pflag,threads):
     # Set initial values in arrays
     energy[0] = all_energy(lattice,nmax,threads)
     ratio[0] = 0.5 # ideal value
-    order[0] = get_order(lattice,nmax)
+    order[0] = get_order(lattice,nmax,threads)
 
     # Begin doing and timing some MC steps.
     initial = time()
     for it in range(1,nsteps+1):
         ratio[it] = MC_step(lattice,temp,nmax,threads)
         energy[it] = all_energy(lattice,nmax,threads)
-        order[it] = get_order(lattice,nmax)
+        order[it] = get_order(lattice,nmax,threads)
     final = time()
     runtime = final-initial
     #order 会不降反增吗？ 真的是相关性吗？
