@@ -97,7 +97,7 @@ def plotdat(arr,pflag,nmax,threads):
         mpl.rc('image', cmap='rainbow')
         for i in range(nmax):
             for j in range(nmax):
-                cols[i,j] = one_energy(arr,i,j,nmax,threads)
+                cols[i,j] = one_energy(arr,i,j,nmax)
         norm = plt.Normalize(cols.min(), cols.max())
     elif pflag==2: # colour the arrows according to angle
         mpl.rc('image', cmap='hsv')
@@ -151,8 +151,7 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-#def one_energy(arr,ix,iy,nmax):#耗时最长
-cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int nmax, int num_threads):
+cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int nmax):
     cdef double en = 0.0
     cdef int ixp, ixm, iyp, iym
     cdef double ang, central_value
@@ -170,7 +169,6 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
 	Returns:
 	  en (float) = reduced energy of cell.
     """
-    #en = 0.0
    
     ixp = (ix+1)%nmax # These are the coordinates
     ixm = (ix-1)%nmax # of the neighbours
@@ -183,15 +181,16 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
     central_value = arr[ix, iy]
     #只有四个数，numpy无用
     
-    # with nogil:
+    # with nogil:没有效果
     #     # 设置线程数，num_threads=4
     #     for ix in prange(nmax, schedule='static', num_threads=num_threads):
     #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixp, iy])**2)
     #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixm, iy])**2)
     #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iyp])**2)
     #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iym])**2)
+    
     ang = central_value-arr[ixp,iy]
-    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))#把公式简化有用吗？仅有四个值，向量化的作用不大，反而会计算空间，np.sum也是大材小用
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
     ang = central_value-arr[ixm,iy]
     en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
     ang = central_value-arr[ix,iyp]
@@ -201,59 +200,32 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
     
     return en
 #=======================================================================
-# def all_energy(arr,nmax):#可以向量化吗啊？
-#     """
-#     Arguments:
-# 	  arr (float(nmax,nmax)) = array that contains lattice data;
-#       nmax (int) = side length of square lattice.
-#     Description:
-#       Function to compute the energy of the entire lattice. Output
-#       is in reduced units (U/epsilon).
-# 	Returns:
-# 	  enall (float) = reduced energy of lattice.
-#     """
-#     en = 0.0
-#     # 使用 periodic boundary conditions
-#     shifted_xp = np.roll(arr, -1, axis=0)
-#     shifted_xm = np.roll(arr, 1, axis=0)
-#     shifted_yp = np.roll(arr, -1, axis=1)
-#     shifted_ym = np.roll(arr, 1, axis=1)
-    
-#     # 计算角度差
-#     ang_xp = arr - shifted_xp
-#     ang_xm = arr - shifted_xm
-#     ang_yp = arr - shifted_yp
-#     ang_ym = arr - shifted_ym
-    
-#     # 计算能量贡献
-#     en = 0.5 * (1.0 - 3.0 * np.cos(ang_xp) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_xm) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_yp) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_ym) ** 2)
-    
-#     return np.sum(en)
-
-cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax,int num_threads):
-    cdef int ix, iy
-    cdef double total_energy = 0.0
-    
-    for ix in range(nmax):
-        for iy in range(nmax):
-            total_energy += one_energy(arr, ix, iy, nmax,num_threads)
-    
-    return total_energy 
-# cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax, int num_threads):
+# cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax,int num_threads):
 #     cdef int ix, iy
 #     cdef double total_energy = 0.0
+#     cdef double local_energy
 
-#     # 使用 OpenMP 并行化外部循环
-#     with gil:#(num_threads=num_threads):
-#         for ix in prange(nmax):  # prange 自动处理线程分配
-#             for iy in range(nmax):
-#                 # 如果 one_energy 函数没有并行化，仍然可以并行调用
-#                 total_energy += one_energy(arr, ix, iy, nmax, num_threads)
+#     openmp.omp_set_num_threads(num_threads)
+    
+    # with nogil:
+    #     for ix in prange(nmax, schedule='static'):
+    #         local_energy = 0.0  # 每个线程的局部能量
+    #         for iy in range(nmax):
+    #             with gil:  # 在需要时获取 GIL
+    #                 local_energy += one_energy(arr, ix, iy, nmax)
+    #         total_energy += local_energy  # 线程安全地更新能量
 
-#     return total_energy
+    # return total_energy 
+cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
+    cdef int ix, iy
+    cdef double total_energy = 0.0
+
+    for ix in range(nmax):
+        for iy in range(nmax):
+            total_energy += one_energy(arr, ix, iy, nmax)
+
+    return total_energy
+ 
 #=======================================================================
 # def get_order(arr,nmax):
 #     """
@@ -324,11 +296,11 @@ cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax, i
   
         for iy in range(nmax):
             ang = box_muller() * scale
-            en0 = one_energy(arr, ix, iy, nmax,num_threads)
+            en0 = one_energy(arr, ix, iy, nmax)
             arr[ix, iy] += ang
-            en1 = one_energy(arr, ix, iy, nmax,num_threads)
+            en1 = one_energy(arr, ix, iy, nmax)
 
-            if en1<=en0:#在实际物理系统中，如果某个格点的扰动导致其能量下降，它确实会释放能量，并趋于更稳定的状态。
+            if en1<=en0:
                 accept += 1
             else:
             # Now apply the Monte Carlo test - compare
@@ -366,7 +338,7 @@ def main(program, nsteps, nmax, temp, pflag,threads):
     ratio = np.zeros(nsteps+1,dtype=float)
     order = np.zeros(nsteps+1,dtype=float)
     # Set initial values in arrays
-    energy[0] = all_energy(lattice,nmax,threads)
+    energy[0] = all_energy(lattice,nmax)
     ratio[0] = 0.5 # ideal value
     order[0] = get_order(lattice,nmax,threads)
 
@@ -374,7 +346,7 @@ def main(program, nsteps, nmax, temp, pflag,threads):
     initial = time()
     for it in range(1,nsteps+1):
         ratio[it] = MC_step(lattice,temp,nmax,threads)
-        energy[it] = all_energy(lattice,nmax,threads)
+        energy[it] = all_energy(lattice,nmax)
         order[it] = get_order(lattice,nmax,threads)
     final = time()
     runtime = final-initial
