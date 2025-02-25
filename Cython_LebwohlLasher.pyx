@@ -31,6 +31,7 @@ import matplotlib as mpl
 
 from libc.math cimport cos, sin, pi, exp
 from scipy.linalg import eig
+from libc.stdlib cimport rand, RAND_MAX
 import numpy as np
 cimport numpy as cnp
 cdef extern from "stdlib.h":
@@ -39,7 +40,8 @@ cdef extern from "stdlib.h":
     double log(double)
 
 #=======================================================================
-def initdat(nmax):
+#def initdat(nmax):
+cdef initdat(int nmax):
     """
     Arguments:
       nmax (int) = size of lattice to create (nmax,nmax).
@@ -50,17 +52,16 @@ def initdat(nmax):
 	Returns:
 	  arr (float(nmax,nmax)) = array to hold lattice.
     """
-    arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
-    return arr
-
-# cnp.import_array()
-# cdef cnp.ndarray[cnp.float_t, ndim=2] initdat(int nmax):
-#     #cdef cnp.ndarray[cnp.float_t, ndim=2] arr = np.random.rand(nmax, nmax) * 2.0 * pi
-#     cdef cnp.ndarray[cnp.float_t, ndim=2] arr = np.empty((nmax, nmax), dtype=np.float64)
-#     arr[:, :] = np.random.rand(nmax, nmax) * 2.0 * pi
+    # arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
+    # return arr
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] arr = np.empty((nmax, nmax), dtype=np.float64)
+    cdef int i, j
     
-#     return arr
-
+    for i in range(nmax):
+        for j in range(nmax):
+            arr[i, j] = drand48() * 2.0 * pi
+    
+    return arr
 
 #=======================================================================
 def plotdat(arr,pflag,nmax):
@@ -233,7 +234,6 @@ cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
 
 #=======================================================================
 # def get_order(arr,nmax):
-# #def get_order(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
 #     """
 #     Arguments:
 # 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -245,44 +245,16 @@ cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
 # 	Returns:
 # 	  max(eigenvalues(Qab)) (float) = order parameter for lattice.
 #     """
-#     delta = np.eye(3)
-#     #cdef np.ndarray[cnp.float_t, ndim=2] delta = np.eye(3, dtype=np.float64)
-#     # cdef np.ndarray[cnp.float_t, ndim=2] delta = np.zeros((3, 3), dtype=np.float64)
-#     # delta[0, 0] = 1.0
-#     # delta[1, 1] = 1.0
-#     # delta[2, 2] = 1.0
-#     #lab = np.stack((np.cos(arr), np.sin(arr), np.zeros_like(arr)))  # 3 x nmax x nmax
-#     cdef np.ndarray[cnp.float_t, ndim=3] lab = np.vstack((np.cos(arr), np.sin(arr), np.zeros_like(arr))).reshape(3, nmax, nmax)
-#     # 计算 Qab 的矩阵
-#     # Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  # 对 i,j 方向进行求和
-#     # Qab = (3 * Qab - delta * (nmax * nmax)) / (2 * nmax * nmax)
-#     cdef np.ndarray[cnp.float_t, ndim=2] Qab = np.zeros((3, 3), dtype=np.float64)
 
-#     cdef int a, b, i, j
-#     for a in range(3):
-#         for b in range(3):
-#             for i in range(nmax):
-#                 for j in range(nmax):
-#                     Qab[a, b] += 3 * lab[a, i, j] * lab[b, i, j] - delta[a, b]
-
-#     Qab /= (2 * nmax * nmax)
-
-#     # Compute eigenvalues of Qab
-#     # cdef np.ndarray[cnp.float_t] eigenvalues
-#     # eigenvalues, _ = eig(Qab)
-#     cdef np.ndarray eigenvalues = eig(Qab)[0]
-
-#     # Return the maximum eigenvalue as the order parameter
-#     return eigenvalues.real.max()
-
-def get_order(arr,nmax):
-    Qab = np.zeros((3,3))
-    delta = np.eye(3,3)
-    #
-    # Generate a 3D unit vector for each cell (i,j) and
-    # put it in a (3,i,j) array.
-    #
-    lab = np.vstack((np.cos(arr),np.sin(arr),np.zeros_like(arr))).reshape(3,nmax,nmax)
+cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax):
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] Qab = np.zeros((3, 3), dtype=np.float64)
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] delta = np.eye(3, dtype=np.float64)
+    cdef cnp.ndarray[cnp.float64_t, ndim=3] lab
+    cdef cnp.ndarray[cnp.float64_t, ndim=1] eigenvalues
+    cdef cnp.ndarray[cnp.float64_t, ndim=2] eigenvectors
+    cdef int a, b, i, j
+    
+    lab = np.vstack((np.cos(arr), np.sin(arr), np.zeros_like(arr))).reshape(3, nmax, nmax)
     for a in range(3):
         for b in range(3):
             for i in range(nmax):
@@ -304,7 +276,6 @@ cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax):
     cdef int ix, iy
     cdef double en0, en1, ang, accept = 0
     cdef double scale = 0.1 + Ts
-    # ChatGPT没有看，但是需要看邮件，新旧版本？要不要，还是直接顺序更新，删除random，两个重要的Chat GPT 对话框，都要再问一遍
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -320,24 +291,6 @@ cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax):
 	Returns:
 	  accept/(nmax**2) (float) = acceptance ratio for current MCS.
     """
-    #
-    # Pre-compute some random numbers.  This is faster than
-    # using lots of individual calls.  "scale" sets the width
-    # of the distribution for the angle changes - increases
-    # with temperature.
-    #scale=0.1+Ts
-    #如果直接设 scale = Ts，当 Ts=0 时，scale 也会是 0，那么 aran 的所有值都会是 0，角度永远不会变化，系统完全冻结。
-#加上 0.1 作为一个最小扰动量，即使在极低温度（Ts ≈ 0）下，仍然允许微小的角度变化，使系统有机会逃离局部极小能量态，而不会完全锁死。
-    #低温时 scale 较小，角度变化幅度小 → 系统趋于稳定。
-    #高温时 scale 较大，角度变化幅度大 → 系统波动较大。
-    #accept = 0
-    #xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    #yran = np.random.randint(0,high=nmax, size=(nmax,nmax))
-    #！！！如果设成一次全体更新之后，再 全体更新的顺序进行，是否可行？
-    #这样，每次 Monte Carlo 步骤都会在随机的位置进行更新，而不是按顺序扫描整个晶格，模拟更符合实际的热力学过程。
-    #aran = np.random.normal(scale=scale, size=(nmax,nmax))
-    #因为中值为0，所以不会产生波浪状或棋盘，比如说第一行平均比第二行少一个正态分布的中值。
-    #在实际中，温度对于角度的影响，是如此随意的吗？正态分布，还是一个极为复杂的等式
     for ix in range(nmax):
         for iy in range(nmax):#看是否里层要迭代行 更节省时间
             #ix = xran[i,j]
