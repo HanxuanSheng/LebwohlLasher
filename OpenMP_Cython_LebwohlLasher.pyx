@@ -183,14 +183,21 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
     central_value = arr[ix, iy]
     #只有四个数，numpy无用
     
-    with nogil:
-        # 设置线程数，num_threads=4
-        for ix in prange(nmax, schedule='static', num_threads=num_threads):
-            en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixp, iy])**2)
-            en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixm, iy])**2)
-            en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iyp])**2)
-            en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iym])**2)
-
+    # with nogil:
+    #     # 设置线程数，num_threads=4
+    #     for ix in prange(nmax, schedule='static', num_threads=num_threads):
+    #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixp, iy])**2)
+    #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ixm, iy])**2)
+    #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iyp])**2)
+    #         en += 0.5 * (1.0 - 3.0 * cos(central_value - arr[ix, iym])**2)
+    ang = central_value-arr[ixp,iy]
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))#把公式简化有用吗？仅有四个值，向量化的作用不大，反而会计算空间，np.sum也是大材小用
+    ang = central_value-arr[ixm,iy]
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
+    ang = central_value-arr[ix,iyp]
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
+    ang = central_value-arr[ix,iym]
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
     
     return en
 #=======================================================================
