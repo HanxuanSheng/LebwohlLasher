@@ -214,15 +214,14 @@ def get_order(arr,nmax):
     delta = np.eye(3)
     lab = np.stack((np.cos(arr), np.sin(arr), np.zeros_like(arr)))  # 3 x nmax x nmax
     
-    # 计算 Qab 的矩阵
-    Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  # 对 i,j 方向进行求和
+    
+    Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  
     Qab = (3 * Qab - delta * (nmax * nmax)) / (2 * nmax * nmax)
     
     eigenvalues, _ = np.linalg.eig(Qab)
     return eigenvalues.max()
 #=======================================================================
 def MC_step(arr,Ts,nmax):
-    # ChatGPT没有看，但是需要看邮件，新旧版本？要不要，还是直接顺序更新，删除random，两个重要的Chat GPT 对话框，都要再问一遍
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -245,9 +244,6 @@ def MC_step(arr,Ts,nmax):
     # with temperature.
     scale=0.1+Ts
     #如果直接设 scale = Ts，当 Ts=0 时，scale 也会是 0，那么 aran 的所有值都会是 0，角度永远不会变化，系统完全冻结。
-#加上 0.1 作为一个最小扰动量，即使在极低温度（Ts ≈ 0）下，仍然允许微小的角度变化，使系统有机会逃离局部极小能量态，而不会完全锁死。
-    #低温时 scale 较小，角度变化幅度小 → 系统趋于稳定。
-    #高温时 scale 较大，角度变化幅度大 → 系统波动较大。
     accept = 0
     #xran = np.random.randint(0,high=nmax, size=(nmax,nmax))
     #yran = np.random.randint(0,high=nmax, size=(nmax,nmax))

@@ -173,9 +173,9 @@ def one_energy(arr,ix,iy,nmax):#耗时最长
 #=======================================================================
 @jit(nopython=True)
 def roll(arr, shift, axis):
-    if axis == 0:  # 沿行滚动
+    if axis == 0:  
         return np.concatenate((arr[shift:], arr[:shift]), axis=0)
-    elif axis == 1:  # 沿列滚动
+    elif axis == 1:  
         return np.concatenate((arr[:, shift:], arr[:, :shift]), axis=1)
 
 @jit(nopython=True)
@@ -191,19 +191,17 @@ def all_energy(arr,nmax):#可以向量化吗啊？
 	  enall (float) = reduced energy of lattice.
     """
     en = 0.0
-    # 使用 periodic boundary conditions
+    
     shifted_xp = roll(arr, -1, axis=0)
     shifted_xm = roll(arr, 1, axis=0)
     shifted_yp = roll(arr, -1, axis=1)
     shifted_ym = roll(arr, 1, axis=1)
     
-    # 计算角度差
     ang_xp = arr - shifted_xp
     ang_xm = arr - shifted_xm
     ang_yp = arr - shifted_yp
     ang_ym = arr - shifted_ym
     
-    # 计算能量贡献
     en = 0.5 * (1.0 - 3.0 * np.cos(ang_xp) ** 2)
     en += 0.5 * (1.0 - 3.0 * np.cos(ang_xm) ** 2)
     en += 0.5 * (1.0 - 3.0 * np.cos(ang_yp) ** 2)
@@ -211,7 +209,7 @@ def all_energy(arr,nmax):#可以向量化吗啊？
     
     return np.sum(en)
 #=======================================================================
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def get_order(arr,nmax):
     """
     Arguments:
@@ -231,18 +229,21 @@ def get_order(arr,nmax):
     # put it in a (3,i,j) array.
     #
     lab = np.vstack((np.cos(arr),np.sin(arr),np.zeros_like(arr))).reshape(3,nmax,nmax)
-    for a in range(3):
+    for a in prange(3):
         for b in range(3):
+            sum_val = 0.0
             for i in range(nmax):
                 for j in range(nmax):
-                    Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
+                    sum_val += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
+            Qab[a,b] = sum_val
+            
     Qab = Qab/(2*nmax*nmax)
     eigenvalues,eigenvectors = np.linalg.eig(Qab)
     return eigenvalues.max()
 #=======================================================================
 @jit(nopython=True, parallel=True)
 def MC_step(arr,Ts,nmax):
-    # ChatGPT没有看，但是需要看邮件，新旧版本？要不要，还是直接顺序更新，删除random，两个重要的Chat GPT 对话框，都要再问一遍
+
     """
     Arguments:
 	  arr (float(nmax,nmax)) = array that contains lattice data;
@@ -302,6 +303,7 @@ def MC_step(arr,Ts,nmax):
           
     return accept/(nmax*nmax)
 #=======================================================================
+#@jit(nopython=True)
 def main(program, nsteps, nmax, temp, pflag):
     """
     Arguments:

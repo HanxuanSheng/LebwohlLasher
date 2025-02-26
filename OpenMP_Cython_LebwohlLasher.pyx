@@ -43,7 +43,6 @@ from cython.parallel import prange
 cimport openmp
 
 #=======================================================================
-#def initdat(nmax):
 cdef initdat(int nmax):
     """
     Arguments:
@@ -55,8 +54,7 @@ cdef initdat(int nmax):
 	Returns:
 	  arr (float(nmax,nmax)) = array to hold lattice.
     """
-    # arr = np.random.random_sample((nmax,nmax))*2.0*np.pi
-    # return arr
+
     cdef cnp.ndarray[cnp.float64_t, ndim=2] arr = np.empty((nmax, nmax), dtype=np.float64)
     cdef int i, j
     
@@ -249,17 +247,12 @@ cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax,int num_t
     cdef int a, b, i, j
     
     lab = np.vstack((np.cos(arr), np.sin(arr), np.zeros_like(arr))).reshape(3, nmax, nmax)
-    # for a in range(3):
-    #     for b in range(3):
-    #         for i in range(nmax):
-    #             for j in range(nmax):
-    #                 Qab[a,b] += 3*lab[a,i,j]*lab[b,i,j] - delta[a,b]
-    with nogil:  # 释放 GIL
+
+    with nogil:  
         for a in range(3):
             for b in range(3):
-                for i in prange(nmax, num_threads=num_threads):  # prange 自动处理线程分配
+                for i in prange(nmax, num_threads=num_threads):  
                     for j in range(nmax):
-                        # 更新 Qab
                         Qab[a, b] += 3 * lab[a, i, j] * lab[b, i, j] - delta[a, b]
     Qab = Qab/(2*nmax*nmax)
     eigenvalues,eigenvectors = np.linalg.eig(Qab)
@@ -316,43 +309,6 @@ cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax, i
           
     return accept/(nmax*nmax)
 
-# #OpenMP version
-# cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax, int num_threads):
-#     cdef int ix, iy
-#     cdef double en0, en1, ang, accept
-#     cdef double scale = 0.1 + Ts
-    
-#     accept = 0.0  # 计算接受率的变量
-#     cdef double local_accept
-#     # 使用 prange 进行并行化
-#     with nogil:
-#         # OpenMP 并行化外部循环
-#         for ix in prange(nmax, num_threads=num_threads, schedule='static'):
-#             # 为每个线程初始化局部的接受变量
-#             local_accept = 0.0
-#             for iy in range(nmax):
-#                 with gil:
-#                     ang = box_muller() * scale
-                
-#                 # 使用 with gil 来确保调用 one_energy 时获取 GI
-#                     en0 = one_energy(arr, ix, iy, nmax)
-#                     arr[ix, iy] += ang
-#                     en1 = one_energy(arr, ix, iy, nmax)
-
-#                     if en1 <= en0:
-#                         local_accept += 1
-#                     else:
-#                         boltz = exp( -(en1 - en0) / Ts )
-#                         if boltz >= drand48():
-#                             local_accept += 1
-#                         else:
-#                             arr[ix, iy] -= ang
-
-#             # 更新接受率：注意线程安全问题，可以在循环外部加总
-#             with gil:
-#                 accept += local_accept
-    
-#     return accept / (nmax * nmax)
 #=======================================================================
 def main(program, nsteps, nmax, temp, pflag,threads):
     """

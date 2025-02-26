@@ -195,19 +195,19 @@ def all_energy(arr,nmax):
 	  enall (float) = reduced energy of lattice.
     """
     en = 0.0
-    # 使用 periodic boundary conditions
+    
     shifted_xp = np.roll(arr, -1, axis=0)
     shifted_xm = np.roll(arr, 1, axis=0)
     shifted_yp = np.roll(arr, -1, axis=1)
     shifted_ym = np.roll(arr, 1, axis=1)
     
-    # 计算角度差
+    
     ang_xp = arr - shifted_xp
     ang_xm = arr - shifted_xm
     ang_yp = arr - shifted_yp
     ang_ym = arr - shifted_ym
     
-    # 计算能量贡献
+    
     en = 0.5 * (1.0 - 3.0 * np.cos(ang_xp) ** 2)
     en += 0.5 * (1.0 - 3.0 * np.cos(ang_xm) ** 2)
     en += 0.5 * (1.0 - 3.0 * np.cos(ang_yp) ** 2)
@@ -230,8 +230,8 @@ def get_order(arr,nmax):
     delta = np.eye(3)
     lab = np.stack((np.cos(arr), np.sin(arr), np.zeros_like(arr)))  # 3 x nmax x nmax
     
-    # 计算 Qab 的矩阵
-    Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  # 对 i,j 方向进行求和
+    
+    Qab = np.tensordot(lab, lab, axes=([1, 2], [1, 2]))  
     Qab = (3 * Qab - delta * (nmax * nmax)) / (2 * nmax * nmax)
     
     eigenvalues, _ = np.linalg.eig(Qab)
@@ -242,7 +242,7 @@ def MC_step(lattice,Ts,nmax,taskid,numtasks,comm):
     lattice_old = lattice.copy()
    
 #************************* master code *******************************/
-    # 主进程初始化 lattice
+    
     if taskid == 0:
         averow = nmax//numworkers
         extra = nmax%numworkers
@@ -253,8 +253,6 @@ def MC_step(lattice,Ts,nmax,taskid,numtasks,comm):
             if i <= extra:
                 rows+=1
 
-        # Tell each worker who its neighbors are, since they must exchange
-        # data with each other.
             if i == 1:
                 above = NONE
             else:
@@ -283,17 +281,12 @@ def MC_step(lattice,Ts,nmax,taskid,numtasks,comm):
 
 #************************* workers code **********************************/
     elif taskid != 0:
-    # Array is already initialized to zero - including the borders
-    # Receive my offset, rows, neighbors and grid partition from master
         offset = comm.recv(source=MASTER, tag=BEGIN)
         rows = comm.recv(source=MASTER, tag=BEGIN)
         above = comm.recv(source=MASTER, tag=BEGIN)
         below = comm.recv(source=MASTER, tag=BEGIN)
         comm.Recv([lattice[offset:offset+rows, :],rows*nmax,MPI.DOUBLE], source=MASTER, tag=BEGIN)
-        #print(f"Rank {taskid}: lattice shape {lattice.shape}")
-    # Determine border elements.  Need to consider first and last columns.
-    # Obviously, row 0 can't exchange with row 0-1.  Likewise, the last
-    # row can't exchange with last+1.
+        
         start=offset
         end=offset+rows-1
  
@@ -344,23 +337,18 @@ def main(program, nsteps, nmax, temp, pflag):
     # Begin doing and timing some MC steps.
     initial = time.time()
     for it in range(1,nsteps+1):
-        ratio[it] = MC_step(lattice,temp,nmax,taskid,numtasks,comm)#需要大改特改
+        ratio[it] = MC_step(lattice,temp,nmax,taskid,numtasks,comm)
         energy[it] = all_energy(lattice,nmax)
         order[it] = get_order(lattice,nmax)
     final = time.time()
     runtime = final-initial
-    #order 会不降反增吗？ 真的是相关性吗？
-    # Final outputs
-    # print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax,nsteps,temp,order[nsteps-1],runtime))
-    # # Plot final frame of lattice and generate output file
-    # savedat(lattice,nsteps,temp,runtime,ratio,energy,order,nmax)
-    # plotdat(lattice,pflag,nmax)
+    
 
     global_order = comm.reduce(order[nsteps-1], op=MPI.SUM, root=0)
 
-    # 只让主进程打印和保存数据
+    # 只让主进程
     if taskid == 0:
-        global_order /= numtasks  # 计算平均 order
+        global_order /= numtasks 
         print("{}: Size: {:d}, Steps: {:d}, T*: {:5.3f}: Order: {:5.3f}, Time: {:8.6f} s".format(program, nmax, nsteps, temp, global_order, runtime))
         savedat(lattice, nsteps, temp, runtime, ratio, energy, order, nmax)
         plotdat(lattice, pflag, nmax)

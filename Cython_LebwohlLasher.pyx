@@ -25,7 +25,7 @@ SH 16-Oct-23
 import sys
 from time import time
 import datetime
-# import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
@@ -148,7 +148,6 @@ def savedat(arr,nsteps,Ts,runtime,ratio,energy,order,nmax):
         print("   {:05d}    {:6.4f} {:12.4f}  {:6.4f} ".format(i,ratio[i],energy[i],order[i]),file=FileOut)
     FileOut.close()
 #=======================================================================
-#def one_energy(arr,ix,iy,nmax):#耗时最长
 cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int nmax):
     cdef double en = 0.0
     cdef int ixp, ixm, iyp, iym
@@ -167,21 +166,15 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
 	Returns:
 	  en (float) = reduced energy of cell.
     """
-    #en = 0.0
-   
     ixp = (ix+1)%nmax # These are the coordinates
     ixm = (ix-1)%nmax # of the neighbours
     iyp = (iy+1)%nmax # with wraparound
     iym = (iy-1)%nmax #
-#
-# Add together the 4 neighbour contributions
-# to the energy
-#
+
     central_value = arr[ix, iy]
-    #只有四个数，numpy无用
     
     ang = central_value-arr[ixp,iy]
-    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))#把公式简化有用吗？仅有四个值，向量化的作用不大，反而会计算空间，np.sum也是大材小用
+    en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
     ang = central_value-arr[ixm,iy]
     en += 0.5*(1.0 - 3.0 * cos(ang) * cos(ang))
     ang = central_value-arr[ix,iyp]
@@ -191,37 +184,7 @@ cdef double one_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int ix, int iy, int
     
     return en
 #=======================================================================
-# def all_energy(arr,nmax):#可以向量化吗啊？
-#     """
-#     Arguments:
-# 	  arr (float(nmax,nmax)) = array that contains lattice data;
-#       nmax (int) = side length of square lattice.
-#     Description:
-#       Function to compute the energy of the entire lattice. Output
-#       is in reduced units (U/epsilon).
-# 	Returns:
-# 	  enall (float) = reduced energy of lattice.
-#     """
-#     en = 0.0
-#     # 使用 periodic boundary conditions
-#     shifted_xp = np.roll(arr, -1, axis=0)
-#     shifted_xm = np.roll(arr, 1, axis=0)
-#     shifted_yp = np.roll(arr, -1, axis=1)
-#     shifted_ym = np.roll(arr, 1, axis=1)
-    
-#     # 计算角度差
-#     ang_xp = arr - shifted_xp
-#     ang_xm = arr - shifted_xm
-#     ang_yp = arr - shifted_yp
-#     ang_ym = arr - shifted_ym
-    
-#     # 计算能量贡献
-#     en = 0.5 * (1.0 - 3.0 * np.cos(ang_xp) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_xm) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_yp) ** 2)
-#     en += 0.5 * (1.0 - 3.0 * np.cos(ang_ym) ** 2)
-    
-#     return np.sum(en)
+
 cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
     cdef int ix, iy
     cdef double total_energy = 0.0
@@ -233,18 +196,6 @@ cdef double all_energy(cnp.ndarray[cnp.float_t, ndim=2] arr, int nmax):
     return total_energy 
 
 #=======================================================================
-# def get_order(arr,nmax):
-#     """
-#     Arguments:
-# 	  arr (float(nmax,nmax)) = array that contains lattice data;
-#       nmax (int) = side length of square lattice.
-#     Description:
-#       Function to calculate the order parameter of a lattice
-#       using the Q tensor approach, as in equation (3) of the
-#       project notes.  Function returns S_lattice = max(eigenvalues(Q_ab)).
-# 	Returns:
-# 	  max(eigenvalues(Qab)) (float) = order parameter for lattice.
-#     """
 
 cdef double get_order(cnp.ndarray[cnp.float64_t, ndim=2] arr, int nmax):
     cdef cnp.ndarray[cnp.float64_t, ndim=2] Qab = np.zeros((3, 3), dtype=np.float64)
@@ -292,16 +243,14 @@ cdef double MC_step(cnp.ndarray[cnp.float_t, ndim=2] arr, double Ts, int nmax):
 	  accept/(nmax**2) (float) = acceptance ratio for current MCS.
     """
     for ix in range(nmax):
-        for iy in range(nmax):#看是否里层要迭代行 更节省时间
-            #ix = xran[i,j]
-            #iy = yran[i,j]
+        for iy in range(nmax):#看是否里层要迭代行 更节省时
             ang = box_muller() * scale
             #ang = aran[ix,iy]
             en0 = one_energy(arr,ix,iy,nmax)
             arr[ix,iy] += ang
             en1 = one_energy(arr,ix,iy,nmax)
 
-            if en1<=en0:#在实际物理系统中，如果某个格点的扰动导致其能量下降，它确实会释放能量，并趋于更稳定的状态。
+            if en1<=en0:
                 accept += 1
             else:
             # Now apply the Monte Carlo test - compare
